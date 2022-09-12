@@ -1,0 +1,156 @@
+
+# 잔고 조회
+#def get_balance(currency):                          
+#    balances = upbit.get_balances()
+#    for b in balances:
+#        if b['currency'] == currency:
+#            if b['balance'] is not None:
+#                return float(b['balance'])
+#            else:
+#                return float(0)
+    
+#while True: 
+#    data = pyupbit.get_ohlcv(ticker="KRW-XRP", interval="minute5") 
+#    now_rsi = rsi(data, 14).iloc[-1] 
+#    print(datetime.datetime.now(), now_rsi) 
+#    time.sleep(1)
+
+#while(True): 
+#    for i in range(len(coinlist)): 
+#        data = pyupbit.get_ohlcv(ticker=coinlist[i], interval="minute3") 
+#        now_rsi = rsi(data, 14).iloc[-1] 
+#        print("코인명: ", coinlist[i]) 
+#        print("현재시간: ", datetime.datetime.now()) 
+#        print("RSI :", now_rsi) 
+#        print() 
+#        time.sleep(0.5)
+
+from types import NoneType
+import pyupbit
+import pandas as pd
+import datetime
+import time
+import talib as ta
+access = ""          # 본인 값으로 변경
+secret = ""          # 본인 값으로 변경
+upbit = pyupbit.Upbit(access, secret)
+
+# 시장가 매수 함수
+def buy(coin):
+    money = upbit.get_balance("KRW")
+    if seeed*0.25 <= money:  
+        upbit.buy_market_order(coin, seeed*0.25)
+    if seeed*0.25 > money >= 5000:
+        upbit.buy_market_order(coin, money)
+    return 
+# 시장가 매도 함수 
+def sell(coin): 
+    amount = upbit.get_balance(coin) 
+    cur_price = pyupbit.get_current_price(coin) 
+    total = amount * cur_price 
+    if total > upbit.get_amount(coin)*1.001: 
+        upbit.sell_market_order(coin, amount) 
+    return
+
+# 변동성 돌파 전략으로 매수 목표가 정하기
+def get_target_price(coin, interval, k):
+    df = pyupbit.get_ohlcv(coin, interval=interval, count=2)   
+    target_price = df.iloc[0]["close"] + (df.iloc[0]["high"] - df.iloc[0]["low"]) * k       
+    return target_price
+
+# 현재 가격 가져오기
+def get_current_price(coin):                      
+    orderdata = pd.DataFrame(pyupbit.get_orderbook(coin))
+    order_dict = orderdata.iloc[0]["orderbook_units"]
+    return order_dict.get("ask_price")
+
+# Top 20 거래량
+def get_high_volume_tickers():
+    result = []
+    for t in pyupbit.get_tickers(fiat='KRW'):
+        volumes = (t, pyupbit.get_ohlcv(ticker=t, count=1, interval="minute3")['value'].values[0])
+        result.append(volumes)
+        time.sleep(0.1)
+    high_volume_list = []
+    result.sort(key=lambda x:x[1])
+    for i in result[-23:]:
+        high_volume_list.append(i[0])
+        time.sleep(0.1)
+    return high_volume_list
+
+
+#\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+# initiate
+coinlist = get_high_volume_tickers()
+seeed = 100000
+interval = "minute5"
+k = 0.1
+lower28 = [] 
+higher65 = [] 
+
+for i in range(len(coinlist)): 
+    lower28.append(False) 
+    higher65.append(False)
+
+
+while(True):
+    try: 
+        for i in range(len(coinlist)): 
+            data5 = pyupbit.get_ohlcv(ticker=coinlist[i], interval="minute5")
+            data60 = pyupbit.get_ohlcv(ticker=coinlist[i], interval="minute60")
+            filter(False, data5)
+            filter(False, data60) 
+            rsi5 = ta.RSI(data5['close'], timeperiod=14)
+            rsi60 = ta.RSI(data60['close'], timeperiod=14)
+            time.sleep(0.5)
+            now_rsi5 = rsi5.iloc[-1]
+            now_rsi60 = rsi60.iloc[-1]
+            time.sleep(0.5)
+
+            rsi5_list = []
+            for j in range(0, -150, -1):
+                rsi5_list.append(rsi5.iloc[j])
+            rsi5_list1 = [x for x in rsi5_list if x != 'nan']
+            rsi5_average = sum(rsi5_list1[1:])/len(rsi5_list1[1:])
+
+            rsi60_list = []
+            for j in range(0, -150, -1):
+                rsi60_list.append(rsi60.iloc[j])
+            rsi60_list1 = [x for x in rsi60_list if x != 'nan']
+            rsi60_average = sum(rsi60_list1[1:])/len(rsi60_list1[1:])
+
+            ta.MA(data5['close'], 5)
+            MA_df = ta.MA(data5['close'], 5).to_frame()
+            data5MA5 = MA_df.iloc[-1][0]
+            ta.MA(data5['close'], 10)
+            MA_df = ta.MA(data5['close'], 10).to_frame()
+            data5MA10 = MA_df.iloc[-1][0]
+            ta.MA(data5['close'], 15)
+            MA_df = ta.MA(data5['close'], 15).to_frame()
+            data5MA15 = MA_df.iloc[-1][0]
+            time.sleep(0.5)
+            #print("코인명: ", coinlist[i]) 
+            #print("현재시간: ", datetime.datetime.now()) 
+            #print("RSI :", now_rsi) 
+            #print()
+            if now_rsi5 <= rsi5_average*0.58 : 
+                lower28[i] = True 
+            if now_rsi5 >= rsi5_average*0.665 and lower28[i] == True :
+                if now_rsi60 < rsi60_average:
+                    if data5MA5 > data5MA10 >= data5MA15:
+                        buy(coinlist[i]) 
+                        lower28[i] = False
+                        time.sleep(0.5)
+                        print("Buy OK")
+            elif rsi5_average*0.66 < now_rsi5 < rsi5_average:
+                higher65[i] = False 
+            elif now_rsi5 > rsi5_average and higher65[i] == False:
+                if now_rsi60 > rsi60_average:
+                    if data5MA5 <= data5MA10:
+                        sell(coinlist[i]) 
+                        higher65[i] = True
+                        time.sleep(0.5) 
+        time.sleep(0.5)
+    except Exception as e:
+        print(e)
+        time.sleep(1)
