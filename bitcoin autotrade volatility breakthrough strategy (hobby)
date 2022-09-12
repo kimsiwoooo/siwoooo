@@ -44,8 +44,8 @@ def get_trade_time(ticker):                         # 최근 거래 채결 날�
 ##########################################################################################################
 
 # 로그인
-access = "nojyt7OEVAPcucFBNqIQYXWQVeNPHqWUD2QqQ5wm"
-secret = "OlMw3HgmS68LiwuPNExt50u1pV3Db47RCP1SXEFr"
+access = ""
+secret = ""
 
 upbit = pyupbit.Upbit(access, secret)
 print("Login OK")
@@ -129,3 +129,41 @@ while True:
             upbit.sell_market_order(ticker, coin)
             time.sleep(1)
             print("Emergency sell")
+            
+            
+#Best K
+import pyupbit
+import numpy as np
+import time
+def get_high_volume_tickers():
+    result = []
+    for t in pyupbit.get_tickers(fiat='KRW'):
+        volumes = (t, pyupbit.get_ohlcv(ticker=t, count=1, interval="minute3")['value'].values[0])
+        result.append(volumes)
+        time.sleep(0.1)
+    high_volume_list = []
+    result.sort(key=lambda x:x[1])
+    for i in result[-23:]:
+        high_volume_list.append(i[0])
+        time.sleep(0.1)
+    return high_volume_list
+coinlist = get_high_volume_tickers()
+
+def get_ror(k=0.5):
+    for i in range(len(coinlist)):
+        df = pyupbit.get_ohlcv(ticker=coinlist[i], interval="minute15", count=12)
+        df['range'] = (df['high'] - df['low']) * k
+        df['target'] = df['open'] + df['range'].shift(1)
+
+        fee = 0.0005
+        df['ror'] = np.where(df['high'] > df['target'],
+                         df['close'] / df['target'],
+                         1)
+
+        ror = df['ror'].cumprod()[-2]
+        return ror
+
+
+for k in np.arange(0.1, 1.0, 0.1):
+    ror = get_ror(k)
+    print("%.1f %f" % (k, ror))
