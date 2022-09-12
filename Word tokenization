@@ -1,0 +1,44 @@
+#-*-coding:utf-8-*-
+import nltk
+def preprocessing(text):
+    from nltk.tokenize import word_tokenize
+    from nltk.tokenize import sent_tokenize
+    from nltk.corpus import stopwords
+    from nltk.stem import WordNetLemmatizer
+    import re
+    from nltk import pos_tag_sents
+    l = re.compile(r'\W*\b\w{1,2}\b')
+    a = l.sub('', text)
+    b = a.lower()
+    c = sent_tokenize(b)
+    stop_words = set(stopwords.words('english'))
+    d = []
+    for w in c:
+        if w not in stop_words:
+            d.append(w)
+    n = WordNetLemmatizer()
+    e = [n.lemmatize(y) for y in d]
+    f = [word_tokenize(sentence) for sentence in e]
+    return f
+Text = open('C:/Users/Kim Siwoo/Desktop/Glove (AB, CL).txt', 'r', encoding='cp1252')
+Text2 = Text.read()
+print(Text2)
+result = preprocessing(Text2)
+import sys
+sys.stdout = open('C:/Users/Kim Siwoo/Desktop/tokenization.txt', 'w', encoding='UTF-8')
+print(result)
+sys.stdout.close()
+for line in result[:5]:
+    print(line)
+len = len(result)
+print(len)
+T = open('C:/Users/Kim Siwoo/Desktop/tokenization.txt', 'r', encoding='UTF-8')
+Token = []
+new_Token = []
+for v in Token:
+    if v not in new_Token:
+        new_Token.append(v)
+import sys
+sys.stdout = open('C:/Users/Kim Siwoo/Desktop/Token.txt', 'w', encoding='UTF-8')
+print(new_Token)
+sys.stdout.close()
