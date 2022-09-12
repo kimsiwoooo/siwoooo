@@ -1,0 +1,37 @@
+#-*-coding:utf-8-*-
+import nltk
+def preprocessing(text):
+    from nltk.tokenize import word_tokenize
+    from nltk.tokenize import sent_tokenize
+    from nltk.corpus import stopwords
+    from nltk.stem import WordNetLemmatizer
+    import re
+    from nltk import pos_tag_sents
+    l = re.compile(r'\W*\b\w{1,2}\b')
+    a = l.sub('', text)
+    b = a.lower()
+    c = sent_tokenize(b)
+    stop_words = set(stopwords.words('english'))
+    d = []
+    for w in c:
+        if w not in stop_words:
+            d.append(w)
+    n = WordNetLemmatizer()
+    e = [n.lemmatize(y) for y in d]
+    f = [word_tokenize(sentence) for sentence in e]
+    return f
+Text = open('C:/Users/Kim Siwoo/Desktop/Glove (AB, CL).txt', 'rt', encoding='cp1252')
+Text2 = Text.read()
+result = preprocessing(Text2)
+from glove import Corpus
+from glove import Glove
+corpus = Corpus()
+corpus.fit(result, window=5)
+glove = Glove(no_components=300, max_loss=10, learning_rate=0.05)
+glove.fit(corpus.matrix, epochs=30, no_threads=4, verbose=True)
+glove.add_dictionary(corpus.dictionary)
+glove.save('glove')
+#load_glove = glove.load('glove')
+#print(glove.most_similar("dna", number=30))
+#print(glove.most_similar("rna", number=30))
+#print(glove.most_similar("viral", number=30))
