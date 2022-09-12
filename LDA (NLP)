@@ -1,0 +1,27 @@
+import pandas as pd
+Abstract = pd.read_excel('C:/Users/Kim Siwoo/Desktop/material patents abstract.xlsx', header=0)
+ab = Abstract[['text']]
+import nltk
+ab['text'] = ab.apply(lambda row: nltk.word_tokenize(row['text']), axis=1)
+from nltk.corpus import stopwords
+stop = stopwords.words('english')
+ab['text'] = ab['text'].apply(lambda x: [word for word in x if word not in (stop)])
+from nltk.stem import WordNetLemmatizer
+ab['text'] = ab['text'].apply(lambda x: [WordNetLemmatizer().lemmatize(word, pos='v') for word in x])
+ab['text'] = ab['text'].apply(lambda x: [word for word in x if len(word) > 3])
+detokenized_doc = []
+for i in range(len(ab)):
+    t = ' '.join(ab['text'][i])
+    detokenized_doc.append(t)
+ab['text'] = detokenized_doc
+from sklearn.feature_extraction.text import CountVectorizer
+vecterizer = CountVectorizer(stop_words='english', max_features=500)
+X = vecterizer.fit_transform((ab['text']))
+from sklearn.decomposition import LatentDirichletAllocation
+lda_model=LatentDirichletAllocation(n_components=20, learning_method='online', random_state=777, max_iter=1)
+lda_top = lda_model.fit_transform(X)
+terms = vecterizer.get_feature_names()
+def get_topics(components, feature_names, n=7):
+    for idx, topic in enumerate(components):
+        print("Topic %d:" % (idx+1), [(feature_names[i], topic[i].round(2)) for i in topic.argsort()[:-n - 1:-1]])
+get_topics(lda_model.components_, terms)
