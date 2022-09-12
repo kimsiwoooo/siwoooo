@@ -1,0 +1,38 @@
+#-*-coding:utf-8-*-
+import nltk
+Text = open('C:/Users/Kim Siwoo/Desktop/word2vec.txt', 'rt', encoding='utf8')
+Text2 = Text.read()
+
+def preprocessing(text):
+    from nltk.tokenize import word_tokenize
+    from nltk.tokenize import sent_tokenize
+    from nltk.corpus import stopwords
+    from nltk.stem import WordNetLemmatizer
+    import re
+    from nltk.tag import pos_tag_sents
+    l = re.compile(r'\W*\b\w{1,2}\b')
+    a = l.sub('', text)
+    b = a.lower()
+    c = sent_tokenize(b)
+    stop_words = set(stopwords.words('english'))
+    d = []
+    for w in c:
+        if w not in stop_words:
+            d.append(w)
+    n = WordNetLemmatizer()
+    e = [n.lemmatize(y) for y in d]
+    f = [word_tokenize(sentence) for sentence in e]
+    return f
+result = preprocessing(Text2)
+from gensim.models import Word2Vec
+model = Word2Vec(sentences=result, vector_size=256, window=9, min_count=2, workers=8, sg=1)
+#model_result = model.wv.most_similar("dna", topn=10)
+import sys
+#sys.stdout = open('C:/Users/Kim Siwoo/Desktop/word2vec_keywords.txt', 'w', encoding='UTF-8')
+#print(model.wv.most_similar("dna", topn=20))
+#print(model.wv.most_similar("rna", topn=20))
+#sys.stdout.close()
+model.wv.save_word2vec_format('nucleicvec')
+#python -m gensim.scripts.word2vec2tensor --i nucleicvec --o nucleicvec
+#from gensim.models import keyedvectors
+#word2vec = keyedvectors.load_word2vec_format('C:/Users/Kim Siwoo/PycharmProjects/nucleicvec')
