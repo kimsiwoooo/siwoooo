@@ -1,0 +1,81 @@
+from google.colab import files
+uploaded = files.upload()
+from keras.backend import dtype
+from tensorflow.python.ops.gen_math_ops import dense_bincount
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from keras.preprocessing import sequence
+from keras.models import Sequential
+from keras.layers import Dense, Dropout, Embedding, LSTM, Bidirectional
+import os
+from tensorflow.keras.layers import Dense, Embedding, Bidirectional, LSTM, Concatenate, Dropout
+from tensorflow.keras import Input, Model
+from tensorflow.keras import optimizers
+from tensorflow.keras.utils import to_categorical
+import os
+
+
+data = pd.read_excel('/content/training data set2.xlsx')
+data.drop_duplicates(subset=['v2'], inplace=True)
+data['v1'].value_counts().plot(kind='bar')
+plt.show()
+print(data.groupby('v1').size().reset_index(name='count'))
+X_train = data['v2']
+y_train = data['v1']
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts(X_train)
+X_train_encoded = tokenizer.texts_to_sequences(X_train)
+# print(X_train_encoded[:5])
+# print(y_train[:5])
+word_to_index = tokenizer.word_index
+#print(word_to_index)
+threshold = 2
+total_cnt = len(word_to_index)
+rare_cnt = 0
+total_freq = 0
+rare_freq = 0
+for key, value in tokenizer.word_counts.items():
+    total_freq = total_freq + value
+    if(value < threshold):
+        rare_cnt = rare_cnt + 1
+        rare_freq = rare_freq + value
+print('등장 빈도가 %s번 이하인 희귀 단어의 수: %s'%(threshold - 1, rare_cnt))
+print("단어 집합(vocabulary)에서 희귀 단어의 비율:", (rare_cnt / total_cnt)*100)
+print("전체 등장 빈도에서 희귀 단어 등장 빈도 비율:", (rare_freq / total_freq)*100)
+vocab_size = len(word_to_index) + 1
+print('단어 집합의 크기: {}'.format((vocab_size)))
+print('데이터의 최대 길이 : %d' % max(len(sample) for sample in X_train_encoded))
+print('데이터의 평균 길이 : %f' % (sum(map(len, X_train_encoded))/len(X_train_encoded)))
+plt.hist([len(sample) for sample in X_train], bins=50)
+plt.xlabel('length of samples')
+plt.ylabel('number of samples')
+plt.show()
+max_len = 624
+X_train_padded = pad_sequences(X_train_encoded, maxlen = max_len)
+print("훈련 데이터의 크기(shape):", X_train_padded.shape)
+y_train = to_categorical(y_train)
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, LSTM, Embedding
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
+from tensorflow.keras.models import load_model
+embedding_dim = 128
+hidden_units = 128
+num_classes = 24
+
+model = Sequential()
+model.add(Embedding(vocab_size, embedding_dim))
+model.add(LSTM(hidden_units))
+model.add(Dense(num_classes, activation='softmax'))
+
+es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=4)
+mc = ModelCheckpoint('best_model.h5', monitor='val_acc', mode='max', verbose=1, save_best_only=True)
+
+model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['acc'])
+model.fit(X_train_padded, y_train, batch_size=128, epochs=8, callbacks=[es, mc])
+from keras.models import load_model
+model.save('vaccine classification')
