@@ -1,0 +1,135 @@
+from google.colab import files
+uploaded = files.upload()
+from keras.backend import dtype
+from tensorflow.python.ops.gen_math_ops import dense_bincount
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from keras.preprocessing import sequence
+from keras.models import Sequential
+from keras.layers import Dense, Dropout, Embedding, LSTM, Bidirectional
+import os
+from tensorflow.keras.layers import Dense, Embedding, Bidirectional, LSTM, Concatenate, Dropout
+from tensorflow.keras import Input, Model
+from tensorflow.keras import optimizers
+from tensorflow.keras.utils import to_categorical
+from sklearn.model_selection import train_test_split
+data = pd.read_excel('/content/training data set.xlsx')
+data.drop_duplicates(subset=['v2'], inplace=True)
+data['v1'].value_counts().plot(kind='bar')
+plt.show()
+print(data.groupby('v1').size().reset_index(name='count'))
+X_data = data['v2']
+y_data = data['v1']
+X_train, X_test, y_train, y_test = train_test_split(X_data, y_data, test_size=0.2, random_state=0, stratify=y_data)
+
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts(X_train)
+X_train_encoded = tokenizer.texts_to_sequences(X_train)
+X_test_encoded = tokenizer.texts_to_sequences(X_test)
+# print(X_train_encoded[:5])
+# print(y_train[:5])
+word_to_index = tokenizer.word_index
+#print(word_to_index)
+threshold = 2
+total_cnt = len(word_to_index)
+rare_cnt = 0
+total_freq = 0
+rare_freq = 0
+for key, value in tokenizer.word_counts.items():
+    total_freq = total_freq + value
+    if(value < threshold):
+        rare_cnt = rare_cnt + 1
+        rare_freq = rare_freq + value
+# print('등장 빈도가 %s번 이하인 희귀 단어의 수: %s'%(threshold - 1, rare_cnt))
+# print("단어 집합(vocabulary)에서 희귀 단어의 비율:", (rare_cnt / total_cnt)*100)
+# print("전체 등장 빈도에서 희귀 단어 등장 빈도 비율:", (rare_freq / total_freq)*100)
+vocab_size = len(word_to_index) + 1
+print('단어 집합의 크기: {}'.format((vocab_size)))
+# print('데이터의 최대 길이 : %d' % max(len(sample) for sample in X_train_encoded))
+# print('데이터의 평균 길이 : %f' % (sum(map(len, X_train_encoded))/len(X_train_encoded)))
+plt.hist([len(sample) for sample in X_train], bins=50)
+plt.xlabel('length of samples')
+plt.ylabel('number of samples')
+plt.show()
+max_len = 624
+X_train_padded = pad_sequences(X_train_encoded, maxlen = max_len)
+X_test = pad_sequences(X_test_encoded, maxlen=max_len)
+print("훈련 데이터의 크기(shape):", X_train_padded.shape)
+y_train = to_categorical(y_train)
+y_test = to_categorical(y_test)
+from tensorflow.keras.layers import Dense, Embedding, Bidirectional, LSTM, Concatenate, Dropout
+from tensorflow.keras import Input, Model
+from tensorflow.keras import optimizers
+import os
+import tensorflow as tf
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
+from tensorflow.keras.models import load_model
+class BahdanauAttention(tf.keras.Model):
+  def __init__(self, units):
+    super(BahdanauAttention, self).__init__()
+    self.W1 = Dense(units)
+    self.W2 = Dense(units)
+    self.V = Dense(1)
+
+  def call(self, values, query): # 단, key와 value는 같음
+    # query shape == (batch_size, hidden size)
+    # hidden_with_time_axis shape == (batch_size, 1, hidden size)
+    # score 계산을 위해 뒤에서 할 덧셈을 위해서 차원을 변경해줍니다.
+    hidden_with_time_axis = tf.expand_dims(query, 1)
+
+    # score shape == (batch_size, max_length, 1)
+    # we get 1 at the last axis because we are applying score to self.V
+    # the shape of the tensor before applying self.V is (batch_size, max_length, units)
+    score = self.V(tf.nn.tanh(self.W1(values) + self.W2(hidden_with_time_axis)))
+
+    # attention_weights shape == (batch_size, max_length, 1)
+    attention_weights = tf.nn.softmax(score, axis=1)
+
+    # context_vector shape after sum == (batch_size, hidden_size)
+    context_vector = attention_weights * values
+    context_vector = tf.reduce_sum(context_vector, axis=1)
+
+    return context_vector, attention_weights
+# max_len = 624
+# vocab_size = 14328
+sequence_input = Input(shape=max_len, dtype='int32')
+embedded_sequences = Embedding(vocab_size, 128, input_length=max_len, mask_zero = True)(sequence_input)
+lstm = Bidirectional(LSTM(64, dropout=0.5, return_sequences = True))(embedded_sequences)
+lstm, forward_h, forward_c, backward_h, backward_c = Bidirectional \
+  (LSTM(64, dropout=0.5, return_sequences=True, return_state=True))(lstm)
+#print(lstm.shape, forward_h.shape, forward_c.shape, backward_h.shape, backward_c.shape)
+state_h = Concatenate()([forward_h, backward_h]) # 은닉 상태
+state_c = Concatenate()([forward_c, backward_c]) # 셀 상태
+attention = BahdanauAttention(64) # 가중치 크기 정의
+context_vector, attention_weights = attention(lstm, state_h)
+dense1 = Dense(70, activation="relu")(context_vector)
+dropout = Dropout(0.5)(dense1)
+output = Dense(19, activation="softmax")(dropout)
+model = Model(inputs=sequence_input, outputs=output)
+es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=3)
+# mc = ModelCheckpoint('best_vaccine', monitor='val_acc', mode='max', verbose=1, save_best_only=True)
+model.compile(loss='categorical_crossentropy',optimizer='adam', metrics=['accuracy'])
+model.summary()
+history = model.fit(X_train_padded, y_train, epochs = 30, batch_size = 256, callbacks=[es], validation_data=(X_test, y_test), verbose=1)
+
+model.summary()
+epochs = range(1, len(history.history['accuracy']) + 1)
+plt.plot(epochs, history.history['loss'])
+plt.plot(epochs, history.history['val_loss'])
+plt.title('model loss')
+plt.ylabel('loss')
+plt.xlabel('epoch')
+plt.legend(['train', 'test'], loc='upper left')
+plt.show()
+
+epochs = range(1, len(history.history['accuracy']) + 1)
+plt.plot(epochs, history.history['accuracy'])
+plt.plot(epochs, history.history['val_accuracy'])
+plt.title('model accuracy')
+plt.ylabel('accuracy')
+plt.xlabel('epoch')
+plt.legend(['train', 'test'], loc='upper left')
+plt.show()
