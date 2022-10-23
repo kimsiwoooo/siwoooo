@@ -1,0 +1,179 @@
+import networkx as nx
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from scipy.linalg import fractional_matrix_power
+from rdkit import Chem
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+
+cmpd_test = pd.read_excel('C:/Users/Kim Siwoo/Desktop/cmpd_test.xlsx')
+cmpd_train = pd.read_excel('C:/Users/Kim Siwoo/Desktop/cmpd_train.xlsx')
+
+def one_of_k_encoding(x, allowable_set):
+    if x not in allowable_set:
+        raise Exception("input {0} not in allowable set{1}:".format(x, allowable_set))
+    return list(map(lambda s: x == s, allowable_set))
+
+def one_of_k_encoding_unk(x, allowable_set):
+    """Maps inputs not in the allowable set to the last element."""
+    if x not in allowable_set:
+        x = allowable_set[-1]
+    return list(map(lambda s: x == s, allowable_set))
+
+def atom_features(atom):
+    return np.array(one_of_k_encoding_unk(atom.GetSymbol(),['C', 'N', 'O', 'S', 'F', 'Si', 'P', 'Cl', 'Br', 'Mg', 'Na','Ca', 'Fe', 'As', 'Al', 'I', 'B', 'V', 'K', 'Tl', 'Yb','Sb', 'Sn', 'Ag', 'Pd', 'Co', 'Se', 'Ti', 'Zn', 'H','Li', 'Ge', 'Cu', 'Au', 'Ni', 'Cd', 'In', 'Mn', 'Zr','Cr', 'Pt', 'Hg', 'Pb', 'Unknown']) +
+                    one_of_k_encoding(atom.GetDegree(), [0, 1, 2, 3, 4, 5, 6,7,8,9,10]) +
+                    one_of_k_encoding_unk(atom.GetTotalNumHs(), [0, 1, 2, 3, 4, 5, 6,7,8,9,10]) +
+                    one_of_k_encoding_unk(atom.GetImplicitValence(), [0, 1, 2, 3, 4, 5, 6,7,8,9,10]) +
+                    [atom.GetIsAromatic()])
+
+def mol_to_nx(mol):
+    G = nx.Graph()
+
+    for atom in mol.GetAtoms():
+        G.add_node(atom.GetIdx(),
+                   atomic_num=atom.GetAtomicNum(),
+                   formal_charge=atom.GetFormalCharge(),
+                   chiral_tag=atom.GetChiralTag(),
+                   hybridization=atom.GetHybridization(),
+                   num_explicit_hs=atom.GetNumExplicitHs(),
+                   is_aromatic=atom.GetIsAromatic())
+    for bond in mol.GetBonds():
+        G.add_edge(bond.GetBeginAtomIdx(),
+                   bond.GetEndAtomIdx(),
+                   bond_type=bond.GetBondType())
+    return G
+
+# 노드 개수(원자 개수)
+mol = []
+for smile_train in cmpd_train["smiles"]:
+    mols = Chem.MolFromSmiles(smile_train) ## 그래프형태
+    mol.append(mols)
+    #c_size = mol.GetNumAtoms()  ##개수
+
+# 원자 feature
+features = [] #리스트 안에 array 있음
+
+for atom in mol.GetAtoms():
+    feature = atom_features(atom)
+    features.append(feature / sum(feature))
+
+# edge 정보
+edges = []
+for bond in mol.GetBonds():
+    edges.append([bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()])
+
+#g = nx.Graph(edges).to_directed()
+g = mol_to_nx(mol)
+
+# edge_index = []
+# for e1, e2 in g.edges:
+#     edge_index.append([e1, e2])
+
+
+
+
+
+
+
+
+
+
+# #Get the Adjacency Matrix (A) and Node Features Matrix (X) as numpy array
+A = np.array(nx.attr_matrix(g)[0])
+X = np.array(nx.attr_matrix(g)[1])
+X = np.expand_dims(X,axis=1)
+
+# print('Shape of A: ', A.shape)
+# print('\nShape of X: ', X.shape)
+# print('\nAdjacency Matrix (A):\n', A)
+# print('\nNode Features Matrix (X):\n', X)
+
+#Dot product Adjacency Matrix (A) and Node Features (X)
+AX = np.dot(A,X)
+#print("Dot product of A and X (AX):\n", AX)
+
+#Add Self Loops
+G_self_loops = g.copy()
+
+self_loops = []
+for i in range(g.number_of_nodes()):
+    self_loops.append((i,i))
+
+G_self_loops.add_edges_from(self_loops)
+
+#Check the edges of G_self_loops after adding the self loops
+#print('Edges of G with self-loops:\n', G_self_loops.edges)
+
+#Get the Adjacency Matrix (A) and Node Features Matrix (X) of added self-lopps graph
+A_hat = np.array(nx.attr_matrix(G_self_loops)[0])
+#print('Adjacency Matrix of added self-loops G (A_hat):\n', A_hat)
+
+#Calculate the dot product of A_hat and X (AX)
+AX = np.dot(A_hat, X)
+#print('AX:\n', AX)
+
+#Get the Degree Matrix of the added self-loops graph
+Deg_Mat = G_self_loops.degree()
+#print('Degree Matrix of added self-loops G (D): ', Deg_Mat)
+
+#Convert the Degree Matrix to a N x N matrix where N is the number of nodes
+D = np.diag([deg for (n,deg) in list(Deg_Mat)])
+#print('Degree Matrix of added self-loops G as numpy array (D):\n', D)
+
+#Find the inverse of Degree Matrix (D)
+D_inv = np.linalg.inv(D)
+#print('Inverse of D:\n', D_inv)
+
+#Dot product of D and AX for normalization
+DAX = np.dot(D_inv,AX)
+#print('DAX:\n', DAX)
+
+#Symmetrically-normalization
+D_half_norm = fractional_matrix_power(D, -0.5)
+DADX = D_half_norm.dot(A_hat).dot(D_half_norm).dot(X)
+#print('DADX:\n', DADX)
+
+#Initialize the weights
+np.random.seed(77777)
+n_h = 4 #number of neurons in the hidden layer
+n_y = 2 #number of neurons in the output layer
+W0 = np.random.randn(X.shape[1],n_h) * 0.01
+W1 = np.random.randn(n_h,n_y) * 0.01
+
+#Implement ReLu as activation function
+def relu(x):
+    return np.maximum(0,x)
+
+#Build GCN layer
+#In this function, we implement numpy to simplify
+def gcn(A,H,W):
+    I = np.identity(A.shape[0]) #create Identity Matrix of A
+    A_hat = A + I #add self-loop to A
+    D = np.diag(np.sum(A_hat, axis=0)) #create Degree Matrix of A
+    D_half_norm = fractional_matrix_power(D, -0.5) #calculate D to the power of -0.5
+    eq = D_half_norm.dot(A_hat).dot(D_half_norm).dot(H).dot(W)
+    return relu(eq)
+
+
+#Do forward propagation
+H1 = gcn(A,X,W0)
+H2 = gcn(A,H1,W1)
+print('Features Representation from GCN output:\n', H2)
+
+from sklearn.preprocessing import LabelEncoder
+label_list_train = []
+for i in cmpd_train["activity"]:
+    label_list_train.append(i)
+encoder = LabelEncoder()
+encoder.fit(label_list_train)
+labels_train = encoder.transform(label_list_train)
+from sklearn.ensemble import RandomForestClassifier as RFC
+model = RFC(n_estimators=10, max_depth=5)
+#model.fit(H2, labels_train)
+
+print(H2.shape)
+print(labels_train.shape)
+
+
